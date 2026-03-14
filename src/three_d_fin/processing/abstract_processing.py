@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 import dendromatics as dm
+from three_d_fin.processing.analysis import compute_plot_analysis, compute_tree_analysis
 from three_d_fin.processing.configuration import FinConfiguration
 from three_d_fin.processing.io import export_tabular_data
 from three_d_fin.processing.progress import Progress
@@ -69,17 +70,20 @@ class FinProcessing(ABC):
         any_of = False
         # Check existence of tabular output
         if self.config.misc is not None and self.config.misc.export_txt:
-            any_of |= Path(str(self.output_basepath) + "_diameters.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_X_c.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_Y_c.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_check_circle.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_n_points_in.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_sector_perct.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_outliers.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_dbh_and_heights.txt").exists()
-            any_of |= Path(str(self.output_basepath) + "_sections.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_diameters.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_X_c.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_Y_c.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_check_circle.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_n_points_in.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_sector_perct.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_outliers.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_dbh_and_heights.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated_sections.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_tree_analysis.txt").exists()
+            any_of |= Path(str(self.output_basepath) + "_plot_summary.txt").exists()
         else:
             any_of |= Path(str(self.output_basepath) + ".xlsx").exists()
+            any_of |= Path(str(self.output_basepath) + "_deprecated.xlsx").exists()
         # Check existence of ini output
         any_of |= Path(str(self.output_basepath) + "_config.ini").exists()
         return any_of
@@ -264,6 +268,8 @@ class FinProcessing(ABC):
         tree_heights,
         cloud_size,
         cloud_shape,
+        tree_analysis=None,
+        plot_analysis=None,
     ):
         """Export the tabular data.
 
@@ -288,6 +294,8 @@ class FinProcessing(ABC):
             tree_heights,
             cloud_size,
             cloud_shape,
+            tree_analysis,
+            plot_analysis,
         )
 
     def process(self):
@@ -696,6 +704,35 @@ class FinProcessing(ABC):
         self._export_tree_locations(tree_locations, dbh_values)
 
         # -------------------------------------------------------------------------------------------------------------
+        # In-depth tree and plot analysis
+        # -------------------------------------------------------------------------------------------------------------
+
+        print("---------------------------------------------")
+        print("7.-Computing tree and plot analysis...")
+        print("---------------------------------------------")
+
+        tree_analysis = compute_tree_analysis(
+            R=R,
+            sections=sections,
+            outliers=outliers,
+            sector_perct=sector_perct,
+            n_points_in=n_points_in,
+            dbh_values=dbh_values,
+            tree_heights=tree_heights,
+            tree_locations=tree_locations,
+            min_radius=config.expert.minimum_diameter / 2.0,
+            max_radius=config.advanced.maximum_diameter / 2.0,
+            min_sector_perct=config.expert.m_number_sectors / config.expert.number_sectors * 100,
+            point_threshold=config.expert.point_threshold,
+        )
+
+        plot_analysis = compute_plot_analysis(
+            tree_analysis=tree_analysis,
+            assigned_cloud=assigned_cloud,
+            cloud_shape=cloud_shape,
+        )
+
+        # -------------------------------------------------------------------------------------------------------------
         # Exporting results
         # -------------------------------------------------------------------------------------------------------------
 
@@ -715,6 +752,8 @@ class FinProcessing(ABC):
             tree_heights,
             cloud_size,
             cloud_shape,
+            tree_analysis,
+            plot_analysis,
         )
         elapsed_las2 = timeit.default_timer() - t_las2
         print("Total time:", "   %.2f" % elapsed_las2, "s")

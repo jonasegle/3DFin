@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from three_d_fin.processing.analysis import compute_quality_mask
 from three_d_fin.processing.configuration import FinConfiguration
 
 
@@ -22,6 +23,8 @@ def export_tabular_data(
     tree_heights: np.ndarray,
     cloud_size: int,
     cloud_shape: int,
+    tree_analysis: dict[str, np.ndarray] | None = None,
+    plot_analysis: dict[str, float] | None = None,
 ):
     """Export tabular data in XLSX or TXT.
 
@@ -80,19 +83,15 @@ def export_tabular_data(
 
     if config.misc is not None and not config.misc.export_txt:
         # Generating aggregated quality value for each section
-        quality = np.zeros(sector_perct.shape)
-        # Section does not pass quality check if:
-        mask = (
-            (
-                sector_perct < config.expert.m_number_sectors / config.expert.number_sectors * 100
-            )  # Percentage of occupied sectors less than minimum
-            | (n_points_in > config.expert.point_threshold)
-            | (outliers > 0.3)  # Outlier probability larger than 30 %
-            | (config.expert.minimum_diameter > R)  # Radius smaller than the minimum radius
-            | (config.advanced.maximum_diameter < R)  # Radius larger than the maximum radius
+        quality_mask = compute_quality_mask(
+            R, outliers, sector_perct, n_points_in,
+            min_radius=config.expert.minimum_diameter / 2.0,
+            max_radius=config.advanced.maximum_diameter / 2.0,
+            min_sector_perct=config.expert.m_number_sectors / config.expert.number_sectors * 100,
+            point_threshold=config.expert.point_threshold,
         )
         # 0: does not pass quality check - 1: passes quality checks
-        quality = np.where(mask, quality, 1)
+        quality = quality_mask.astype(float)
 
         # Function to convert data to pandas DataFrames
         def to_pandas(data):
@@ -168,104 +167,140 @@ def export_tabular_data(
 
         xls_filename = str(basepath_output) + ".xlsx"
 
-        # Creating an instance of a excel writer
-        writer = pd.ExcelWriter(xls_filename, engine="xlsxwriter")
-
-        # Writing the descriptions
+        # Export legacy sheets to a separate deprecated file
+        deprecated_filename = str(basepath_output) + "_deprecated.xlsx"
+        deprecated_writer = pd.ExcelWriter(deprecated_filename, engine="xlsxwriter")
 
         df_info_dbh_and_heights.to_excel(
-            writer,
-            sheet_name="Plot Metrics",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Plot Metrics", header=False, index=False, merge_cells=False,
         )
-
         df_info_cloud_size.to_excel(
-            writer,
-            sheet_name="Plot Metrics",
-            startrow=1,
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Plot Metrics", startrow=1, header=False, index=False, merge_cells=False,
         )
-
         df_info_diameters.to_excel(
-            writer,
-            sheet_name="Diameters",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Diameters", header=False, index=False, merge_cells=False,
         )
-
-        df_info_X_c.to_excel(writer, sheet_name="X", header=False, index=False, merge_cells=False)
-
-        df_info_Y_c.to_excel(writer, sheet_name="Y", header=False, index=False, merge_cells=False)
-
+        df_info_X_c.to_excel(deprecated_writer, sheet_name="X", header=False, index=False, merge_cells=False)
+        df_info_Y_c.to_excel(deprecated_writer, sheet_name="Y", header=False, index=False, merge_cells=False)
         df_info_sections.to_excel(
-            writer,
-            sheet_name="Sections",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Sections", header=False, index=False, merge_cells=False,
         )
-
         df_info_quality.to_excel(
-            writer,
-            sheet_name="Q(Overall Quality 0-1)",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Q(Overall Quality 0-1)", header=False, index=False, merge_cells=False,
         )
-
         df_info_outliers.to_excel(
-            writer,
-            sheet_name="Q1(Outlier Probability)",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Q1(Outlier Probability)", header=False, index=False, merge_cells=False,
         )
-
         df_info_sector_perct.to_excel(
-            writer,
-            sheet_name="Q2(Sector Occupancy)",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Q2(Sector Occupancy)", header=False, index=False, merge_cells=False,
         )
-
         df_info_n_points_in.to_excel(
-            writer,
-            sheet_name="Q3(Points Inner Circle)",
-            header=False,
-            index=False,
-            merge_cells=False,
+            deprecated_writer, sheet_name="Q3(Points Inner Circle)", header=False, index=False, merge_cells=False,
         )
 
-        # Writing the data
-        df_dbh_and_heights.to_excel(writer, sheet_name="Plot Metrics", startrow=2, startcol=1)
-        df_diameters.to_excel(writer, sheet_name="Diameters", startrow=2, startcol=1)
-        df_X_c.to_excel(writer, sheet_name="X", startrow=2, startcol=1)
-        df_Y_c.to_excel(writer, sheet_name="Y", startrow=2, startcol=1)
-        df_sections.to_excel(writer, sheet_name="Sections", startrow=2, startcol=1)
-        df_quality.to_excel(writer, sheet_name="Q(Overall Quality 0-1)", startrow=2, startcol=1)
-        df_outliers.to_excel(writer, sheet_name="Q1(Outlier Probability)", startrow=2, startcol=1)
-        df_sector_perct.to_excel(writer, sheet_name="Q2(Sector Occupancy)", startrow=2, startcol=1)
-        df_n_points_in.to_excel(writer, sheet_name="Q3(Points Inner Circle)", startrow=2, startcol=1)
+        df_dbh_and_heights.to_excel(deprecated_writer, sheet_name="Plot Metrics", startrow=2, startcol=1)
+        df_diameters.to_excel(deprecated_writer, sheet_name="Diameters", startrow=2, startcol=1)
+        df_X_c.to_excel(deprecated_writer, sheet_name="X", startrow=2, startcol=1)
+        df_Y_c.to_excel(deprecated_writer, sheet_name="Y", startrow=2, startcol=1)
+        df_sections.to_excel(deprecated_writer, sheet_name="Sections", startrow=2, startcol=1)
+        df_quality.to_excel(deprecated_writer, sheet_name="Q(Overall Quality 0-1)", startrow=2, startcol=1)
+        df_outliers.to_excel(deprecated_writer, sheet_name="Q1(Outlier Probability)", startrow=2, startcol=1)
+        df_sector_perct.to_excel(deprecated_writer, sheet_name="Q2(Sector Occupancy)", startrow=2, startcol=1)
+        df_n_points_in.to_excel(deprecated_writer, sheet_name="Q3(Points Inner Circle)", startrow=2, startcol=1)
+
+        deprecated_writer.close()
+
+        # Main output file: only new Tree Analysis and Plot Summary
+        writer = pd.ExcelWriter(xls_filename, engine="xlsxwriter")
+
+        # Tree Analysis and Plot Summary sheets
+        if tree_analysis is not None:
+            df_tree_analysis = pd.DataFrame(
+                data={
+                    "DBH": tree_analysis["dbh"],
+                    "Normal_Section_Area": tree_analysis["normal_section_area"],
+                    "Tree_Height": tree_analysis["tree_height"],
+                    "Crown_Height": tree_analysis["crown_height"],
+                    "Stem_Volume": tree_analysis["stem_volume"],
+                    "X": tree_locations[:, 0],
+                    "Y": tree_locations[:, 1],
+                },
+                index=["T" + str(i + 1) for i in range(len(tree_analysis["dbh"]))],
+            )
+
+            info_tree_analysis = pd.Series(
+                "Per-tree analysis: DBH (m), Normal Section Area (m^2), "
+                "Tree Height (m), Crown Height (m), Stem Volume (m^3), Location (X, Y)."
+            )
+            info_tree_analysis.to_excel(
+                writer, sheet_name="Tree Analysis", header=False, index=False, merge_cells=False,
+            )
+            df_tree_analysis.to_excel(writer, sheet_name="Tree Analysis", startrow=2, startcol=1)
+
+        if plot_analysis is not None:
+            metric_labels = {
+                "n_trees": ("Number of Trees", "-"),
+                "plot_area_m2": ("Plot Area", "m^2"),
+                "total_stem_volume_m3": ("Total Stem Volume", "m^3"),
+                "mean_dbh_m": ("Mean DBH", "m"),
+                "mean_tree_height_m": ("Mean Tree Height", "m"),
+                "mean_crown_height_m": ("Mean Crown Height", "m"),
+                "mean_normal_section_area_m2": ("Mean Normal Section Area", "m^2"),
+                "mean_stem_volume_m3": ("Mean Stem Volume", "m^3"),
+                "stem_density_per_ha": ("Stem Density", "trees/ha"),
+                "basal_area_m2_per_ha": ("Basal Area", "m^2/ha"),
+                "crown_coverage_pct": ("Crown Coverage", "%"),
+            }
+            rows = []
+            for key, value in plot_analysis.items():
+                label, unit = metric_labels.get(key, (key, "-"))
+                rows.append({"Metric": label, "Value": round(value, 4), "Unit": unit})
+
+            df_plot_summary = pd.DataFrame(rows)
+            info_plot_summary = pd.Series("Plot-level summary metrics.")
+            info_plot_summary.to_excel(
+                writer, sheet_name="Plot Summary", header=False, index=False, merge_cells=False,
+            )
+            df_plot_summary.to_excel(
+                writer, sheet_name="Plot Summary", startrow=2, startcol=1, index=False,
+            )
 
         writer.close()
 
     else:
-        np.savetxt(str(basepath_output) + "_diameters.txt", R * 2, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_X_c.txt", X_c, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_Y_c.txt", Y_c, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_check_circle.txt", check_circle, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_n_points_in.txt", n_points_in, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_sector_perct.txt", sector_perct, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_outliers.txt", outliers, fmt=("%.3f"))
-        np.savetxt(str(basepath_output) + "_dbh_and_heights.txt", dbh_and_heights, fmt=("%.3f"))
+        # Legacy TXT exports to deprecated files
+        np.savetxt(str(basepath_output) + "_deprecated_diameters.txt", R * 2, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_X_c.txt", X_c, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_Y_c.txt", Y_c, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_check_circle.txt", check_circle, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_n_points_in.txt", n_points_in, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_sector_perct.txt", sector_perct, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_outliers.txt", outliers, fmt=("%.3f"))
+        np.savetxt(str(basepath_output) + "_deprecated_dbh_and_heights.txt", dbh_and_heights, fmt=("%.3f"))
         np.savetxt(
-            str(basepath_output) + "_sections.txt",
+            str(basepath_output) + "_deprecated_sections.txt",
             np.column_stack(sections),
             fmt=("%.3f"),
         )
+
+        # New analysis TXT exports
+        if tree_analysis is not None:
+            tree_analysis_array = np.column_stack([
+                tree_analysis["dbh"],
+                tree_analysis["normal_section_area"],
+                tree_analysis["tree_height"],
+                tree_analysis["crown_height"],
+                tree_analysis["stem_volume"],
+            ])
+            np.savetxt(
+                str(basepath_output) + "_tree_analysis.txt",
+                tree_analysis_array,
+                fmt="%.3f",
+                header="DBH\tNormal_Section_Area\tTree_Height\tCrown_Height\tStem_Volume",
+                delimiter="\t",
+            )
+
+        if plot_analysis is not None:
+            with open(str(basepath_output) + "_plot_summary.txt", "w") as f:
+                for key, value in plot_analysis.items():
+                    f.write(f"{key}\t{value:.4f}\n")
