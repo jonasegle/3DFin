@@ -227,6 +227,8 @@ class Application(QMainWindow):
                     self.ui.export_txt_rb_1.setChecked(value_param)
                     self.ui.export_txt_rb_2.setChecked(not value_param)
                     self.ui.export_txt_lbl.setToolTip(tooltip_text)
+                elif not hasattr(self.ui, key_param + "_in"):
+                    continue  # Skip parameters without a GUI widget
                 else:  # regular "numeric" QTextEdit live here.
                     input_field = getattr(self.ui, key_param + "_in")
                     input_field.setText(str(value_param))
@@ -368,6 +370,8 @@ class Application(QMainWindow):
                     category_dict[key_param] = self.ui.is_noisy_chk.isChecked()
                 elif key_param == "export_txt":
                     category_dict[key_param] = self.ui.export_txt_rb_1.isChecked()
+                elif not hasattr(self.ui, key_param + "_in"):
+                    continue  # Skip parameters without a GUI widget (use defaults)
                 else:
                     category_dict[key_param] = getattr(self.ui, key_param + "_in").text()
             config_dict[category_name] = category_dict

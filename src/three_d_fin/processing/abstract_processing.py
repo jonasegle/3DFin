@@ -628,6 +628,8 @@ class FinProcessing(ABC):
             config.expert.number_sectors,
             config.expert.m_number_sectors,
             config.expert.circle_width,
+            inflation_factor=config.expert.inflation_factor,
+            max_relative_deviation=config.expert.max_relative_deviation,
             progress_hook=self.progress.update,
         )
 

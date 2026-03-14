@@ -30,7 +30,7 @@ class BasicParameters(BaseModel):
         "to find stems with minimum presence of shrubs or branches. \n"
         "Reasonable values are 2-5 meters.",
         gt=0,
-        default=3.5,
+        default=5,
         hint="meters",
     )
     # Lower limit (vertical) of the stripe where it should be reasonable to find trunks with minimum presence of shrubs or branchs.
@@ -345,6 +345,23 @@ class ExpertParameters(BaseModel):
         gt=0,
         default=0.02,
         hint="meters",
+    )
+
+    ### Multi-pass circle fitting ###
+    # Multiplier for the neighbor circle radius when prefiltering points in multi-pass fitting
+    inflation_factor: float = Field(
+        title="Neighbor circle inflation factor",
+        description="Multiplier for the neighbor circle radius when prefiltering points in multi-pass fitting.",
+        gt=1.0,
+        default=1.5,
+    )
+    # Maximum allowed fractional deviation of a section radius from its nearest valid neighbor
+    max_relative_deviation: float = Field(
+        title="Maximum relative radius deviation",
+        description="Maximum allowed fractional deviation of a section radius from its nearest valid neighbor.",
+        gt=0.0,
+        le=1.0,
+        default=0.5,
     )
 
     ### Drawing circles and axes ###
