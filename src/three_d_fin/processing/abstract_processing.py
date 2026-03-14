@@ -612,7 +612,7 @@ class FinProcessing(ABC):
             Y_c,
             R,
             check_circle,
-            _,
+            pass_method,
             sector_perct,
             n_points_in,
         ) = dm.compute_sections(
@@ -655,6 +655,7 @@ class FinProcessing(ABC):
             n_points_in,
             tree_vector,
             outliers,
+            pass_method,
             config.expert.minimum_diameter / 2.0,
             config.advanced.maximum_diameter / 2.0,
             config.expert.point_threshold,

@@ -177,6 +177,7 @@ class CloudComparePluginProcessing(FinProcessing):
         CloudComparePluginProcessing.write_sf(cloud_circles, circles_coords[:, 8], "Diameter")
         CloudComparePluginProcessing.write_sf(cloud_circles, circles_coords[:, 9], "outlier_prob")
         CloudComparePluginProcessing.write_sf(cloud_circles, circles_coords[:, 10], "quality")
+        CloudComparePluginProcessing.write_sf(cloud_circles, circles_coords[:, 11], "pass_method")
         cloud_circles.toggleSF()
         cloud_circles.setCurrentDisplayedScalarField(6)  # = quality
         self.base_group.addChild(cloud_circles)

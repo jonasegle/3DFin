@@ -124,6 +124,7 @@ class StandaloneLASProcessing(FinProcessing):
                 laspy.ExtraBytesParams(name="Diameter", type=np.float64),
                 laspy.ExtraBytesParams(name="outlier_prob", type=np.float64),
                 laspy.ExtraBytesParams(name="quality", type=np.int32),
+                laspy.ExtraBytesParams(name="pass_method", type=np.int32),
             ]
         )
 
@@ -134,6 +135,7 @@ class StandaloneLASProcessing(FinProcessing):
         las_circ.Diameter = circles_coords[:, 8]
         las_circ.outlier_prob = circles_coords[:, 9]
         las_circ.quality = circles_coords[:, 10]
+        las_circ.pass_method = circles_coords[:, 11]
 
         las_circ.write(str(self.output_basepath) + "_circ.las")
 
