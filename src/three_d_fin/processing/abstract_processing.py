@@ -511,6 +511,9 @@ class FinProcessing(ABC):
             (coords[:, 3] > config.basic.lower_limit) & (coords[:, 3] < config.basic.upper_limit),
             0:4,
         ]
+
+        h_range_value = config.expert.height_range * (config.basic.upper_limit - config.basic.lower_limit)
+
         clust_stripe = dm.verticality_clustering(
             stripe,
             config.expert.verticality_scale_stripe,
@@ -520,6 +523,7 @@ class FinProcessing(ABC):
             config.expert.res_xy_stripe,
             config.expert.res_z_stripe,
             n_digits,
+            h_range_value=h_range_value,
         )
 
         print("---------------------------------------------")
