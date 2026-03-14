@@ -54,13 +54,13 @@ class StandaloneLASProcessing(FinProcessing):
         las_dtm_points.xyz = dtm[:, 0:3]
         las_dtm_points.write(str(self.output_basepath) + "_dtm_points.las")
 
-    def _export_stripe(self, clust_stripe: np.ndarray):
+    def _export_stripe(self, clust_stripe: np.ndarray, suffix=""):
         las_stripe = laspy.create(point_format=2, file_version="1.4")
         las_stripe.xyz = clust_stripe[:, 0:3]
 
         las_stripe.add_extra_dim(laspy.ExtraBytesParams(name="tree_ID", type=np.int32))
         las_stripe.tree_ID = clust_stripe[:, -1]
-        las_stripe.write(str(self.output_basepath) + "_stripe.las")
+        las_stripe.write(str(self.output_basepath) + f"_stripe{suffix}.las")
 
     def _enrich_base_cloud(self, assigned_cloud: np.ndarray):
         extra_fields = list()

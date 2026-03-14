@@ -594,6 +594,8 @@ class FinProcessing(ABC):
             n_digits,
         )[:, 0:6]
 
+        self._export_stripe(stems, suffix="_stems")
+
         # Computing circles
         print("---------------------------------------------")
         print("5.-Computing diameters along stems...")
