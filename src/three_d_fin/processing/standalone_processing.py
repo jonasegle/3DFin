@@ -44,10 +44,10 @@ class StandaloneLASProcessing(FinProcessing):
                 self.base_cloud.z,
                 self.base_cloud[self.config.basic.z0_name],
             )
-        ).transpose()
+        ).transpose().astype(np.float32)
 
     def _get_xyz_from_base(self) -> np.ndarray:
-        return np.vstack((self.base_cloud.x, self.base_cloud.y, self.base_cloud.z)).transpose()
+        return np.vstack((self.base_cloud.x, self.base_cloud.y, self.base_cloud.z)).transpose().astype(np.float32)
 
     def _export_dtm(self, dtm: np.ndarray):
         las_dtm_points = laspy.create(point_format=2, file_version="1.4")

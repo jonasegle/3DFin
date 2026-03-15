@@ -311,7 +311,7 @@ def compute_tree_analysis(
 
 
 def compute_crown_coverage(
-    assigned_cloud: np.ndarray,
+    crown_cloud: np.ndarray,
     avg_crown_height: float,
     pixel_resolution: float = 0.5,
 ) -> tuple[float, float, float]:
@@ -319,8 +319,8 @@ def compute_crown_coverage(
 
     Parameters
     ----------
-    assigned_cloud : np.ndarray
-        Point cloud of shape (n_points, 6): [x, y, z, z0, tree_id, dist_to_axis].
+    crown_cloud : np.ndarray
+        Point cloud of shape (n_points, 3): [x, y, z0].
     avg_crown_height : float
         Average crown height. Points above this height are considered canopy.
     pixel_resolution : float
@@ -331,8 +331,8 @@ def compute_crown_coverage(
     tuple[float, float, float]
         (coverage_percentage, occupied_pixels, total_pixels).
     """
-    x_all = assigned_cloud[:, 0]
-    y_all = assigned_cloud[:, 1]
+    x_all = crown_cloud[:, 0]
+    y_all = crown_cloud[:, 1]
     x_min, x_max = x_all.min(), x_all.max()
     y_min, y_max = y_all.min(), y_all.max()
 
@@ -340,15 +340,15 @@ def compute_crown_coverage(
     ny = max(1, int(np.ceil((y_max - y_min) / pixel_resolution)))
     total_pixels = float(nx * ny)
 
-    crown_mask = assigned_cloud[:, 3] > avg_crown_height
+    crown_mask = crown_cloud[:, 2] > avg_crown_height
     if not np.any(crown_mask):
         return 0.0, 0.0, total_pixels
 
-    crown_x = assigned_cloud[crown_mask, 0]
-    crown_y = assigned_cloud[crown_mask, 1]
+    crown_x = crown_cloud[crown_mask, 0]
+    crown_y = crown_cloud[crown_mask, 1]
 
-    px = ((crown_x - x_min) / pixel_resolution).astype(np.int64)
-    py = ((crown_y - y_min) / pixel_resolution).astype(np.int64)
+    px = ((crown_x - x_min) / pixel_resolution).astype(np.int32)
+    py = ((crown_y - y_min) / pixel_resolution).astype(np.int32)
     np.clip(px, 0, nx - 1, out=px)
     np.clip(py, 0, ny - 1, out=py)
 
@@ -362,7 +362,7 @@ def compute_crown_coverage(
 
 def compute_plot_analysis(
     tree_analysis: dict[str, np.ndarray],
-    assigned_cloud: np.ndarray,
+    crown_cloud: np.ndarray,
     cloud_shape: float,
     pixel_resolution: float = 0.5,
 ) -> dict[str, float]:
@@ -372,8 +372,8 @@ def compute_plot_analysis(
     ----------
     tree_analysis : dict[str, np.ndarray]
         Output from compute_tree_analysis.
-    assigned_cloud : np.ndarray
-        Full assigned point cloud of shape (n_points, 6).
+    crown_cloud : np.ndarray
+        Point cloud of shape (n_points, 3): [x, y, z0].
     cloud_shape : float
         Ground area of the plot in m^2.
     pixel_resolution : float
@@ -399,7 +399,7 @@ def compute_plot_analysis(
         return float(np.mean(valid)) if len(valid) > 0 else 0.0
 
     avg_crown_h = _mean_nonzero(crown_height)
-    crown_cov_pct, _, _ = compute_crown_coverage(assigned_cloud, avg_crown_h, pixel_resolution)
+    crown_cov_pct, _, _ = compute_crown_coverage(crown_cloud, avg_crown_h, pixel_resolution)
 
     return {
         "n_trees": n_trees,

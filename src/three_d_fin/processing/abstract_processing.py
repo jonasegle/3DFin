@@ -1,3 +1,4 @@
+import gc
 import timeit
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -404,7 +405,7 @@ class FinProcessing(ABC):
             print("---------------------------------------------")
 
             _, _, voxelated_ground = dm.voxelate(
-                coords[coords[:, 3] < 0.5, 0:3],
+                coords[coords[:, 3] < 0.5, 0:3].astype(np.float64),
                 1,
                 2000,
                 n_digits,
@@ -412,6 +413,7 @@ class FinProcessing(ABC):
             )
             cloud_size = coords.shape[0] / 1000000
             cloud_shape = voxelated_ground.shape[0]
+            del voxelated_ground
             print("   This cloud has", "{:.2f}".format(cloud_size), "million points")
             print("   Its area is ", cloud_shape, "m^2")
 
@@ -427,7 +429,7 @@ class FinProcessing(ABC):
             print("Analyzing cloud size...")
             print("---------------------------------------------")
 
-            _, _, voxelated_ground = dm.voxelate(coords, 1, 2000, n_digits, with_n_points=False)
+            _, _, voxelated_ground = dm.voxelate(coords.astype(np.float64), 1, 2000, n_digits, with_n_points=False)
             cloud_size = coords.shape[0] / 1000000
             cloud_shape = voxelated_ground.shape[0]
             print("   This cloud has", "{:.2f}".format(cloud_size), "million points")
@@ -459,6 +461,7 @@ class FinProcessing(ABC):
                 t = timeit.default_timer()
                 # Extracting ground points and DTM ## MAYBE ADD VOXELIZATION HERE
                 cloth_nodes = dm.generate_dtm(clean_points)
+                del clean_points
 
                 elapsed = timeit.default_timer() - t
                 print("        ", "%.2f" % elapsed, "s: generating the DTM")
@@ -496,7 +499,14 @@ class FinProcessing(ABC):
             print("---------------------------------------------")
             t = timeit.default_timer()
             z0_values = dm.normalize_heights(coords, dtm)
-            coords = np.append(coords, np.expand_dims(z0_values, axis=1), 1)
+            del cloth_nodes, dtm, completed_dtm
+            coords_full = np.empty((coords.shape[0], 4), dtype=coords.dtype)
+            coords_full[:, :3] = coords
+            del coords
+            coords_full[:, 3] = z0_values
+            del z0_values
+            coords = coords_full
+            del coords_full
 
             # Check that the normalization is correct.
             self.area_warning, area_discrepancy = dm.check_normalization_discrepancy(coords[:, [0, 1, 3]], cloud_shape)
@@ -558,6 +568,8 @@ class FinProcessing(ABC):
             tree_id_field=-1,
             progress_hook=self.progress.update,
         )
+        del coords
+        gc.collect()
 
         print("  ")
         print("---------------------------------------------")
@@ -570,9 +582,12 @@ class FinProcessing(ABC):
         clean_stripe = clust_stripe[np.isin(clust_stripe[:, -1], tree_vector[:, 0])]
 
         self._export_stripe(clean_stripe)
+        del stripe, clust_stripe, clean_stripe
 
         # Whole cloud including new
         self._enrich_base_cloud(assigned_cloud)
+        del self.base_cloud
+        gc.collect()
 
         elapsed_las = timeit.default_timer() - t_las
         print("Total time:", "   %.2f" % elapsed_las, "s")
@@ -591,6 +606,11 @@ class FinProcessing(ABC):
             & (assigned_cloud[:, 3] < config.advanced.maximum_height + config.advanced.section_wid),
             :,
         ]
+        # Extract lightweight data for crown coverage before releasing assigned_cloud
+        crown_data = assigned_cloud[:, [0, 1, 3]].copy()  # (x, y, z0)
+        del assigned_cloud
+        gc.collect()
+
         stems = dm.verticality_clustering(
             xyz0_coords,
             config.expert.verticality_scale_stripe,
@@ -640,6 +660,8 @@ class FinProcessing(ABC):
             max_relative_deviation=config.expert.max_relative_deviation,
             progress_hook=self.progress.update,
         )
+        del stems
+        gc.collect()
 
         # Once every circle on every tree is fitted, outliers are detected.
         np.seterr(divide="ignore", invalid="ignore")
@@ -728,7 +750,7 @@ class FinProcessing(ABC):
 
         plot_analysis = compute_plot_analysis(
             tree_analysis=tree_analysis,
-            assigned_cloud=assigned_cloud,
+            crown_cloud=crown_data,
             cloud_shape=cloud_shape,
         )
 
