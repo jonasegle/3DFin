@@ -112,7 +112,7 @@ class CloudComparePluginProcessing(FinProcessing):
         self.base_group.addChild(cloud_stripe)
         self.cc_instance.addToDB(cloud_stripe)
 
-    def _enrich_base_cloud(self, assigned_cloud: np.ndarray):
+    def _enrich_base_cloud(self, assigned_cloud: np.ndarray, downsample_factor: int = 1):
         copy_base_cloud = pycc.ccPointCloud(self.base_cloud.getName())
         copy_base_cloud.copyGlobalShiftAndScale(self.base_cloud)
         copy_base_cloud.reserve(self.base_cloud.size())

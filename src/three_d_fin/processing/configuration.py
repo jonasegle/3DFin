@@ -419,6 +419,16 @@ class ExpertParameters(BaseModel):
         default=2,
     )
 
+    ### Output ###
+    # Downsampling factor for the enriched point cloud export (tree_ID_dist_axes.las)
+    dist_axes_downsample: int = Field(
+        title="Dist-axes cloud downsample factor",
+        description="Keep every Nth point when exporting the enriched point cloud "
+        "(tree_ID_dist_axes.las). 1 = no downsampling. Higher values reduce file size.",
+        ge=1,
+        default=10,
+    )
+
 
 class MiscParameters(BaseModel):
     """Handle the "misc" parameters section."""

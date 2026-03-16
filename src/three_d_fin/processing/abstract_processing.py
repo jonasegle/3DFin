@@ -178,7 +178,7 @@ class FinProcessing(ABC):
         pass
 
     @abstractmethod
-    def _enrich_base_cloud(self, assigned_cloud: np.ndarray):
+    def _enrich_base_cloud(self, assigned_cloud: np.ndarray, downsample_factor: int = 1):
         """Enrich the base cloud with the cluster ID and the z0 values and export it.
 
         Parameters
@@ -188,6 +188,8 @@ class FinProcessing(ABC):
             It consists of 6 columns: (x), (y), (z) and z0 coordinates,
             5th column containing tree ID that each point belongs to and a 6th column containing
             point distance to closest axis.
+        downsample_factor : int
+            Keep every Nth point. 1 means no downsampling. Defaults to 1.
 
         """
         pass
@@ -585,7 +587,7 @@ class FinProcessing(ABC):
         del stripe, clust_stripe, clean_stripe
 
         # Whole cloud including new
-        self._enrich_base_cloud(assigned_cloud)
+        self._enrich_base_cloud(assigned_cloud, downsample_factor=config.expert.dist_axes_downsample)
         del self.base_cloud
         gc.collect()
 

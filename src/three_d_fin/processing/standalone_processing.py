@@ -62,7 +62,7 @@ class StandaloneLASProcessing(FinProcessing):
         las_stripe.tree_ID = clust_stripe[:, -1]
         las_stripe.write(str(self.output_basepath) + f"_stripe{suffix}.las")
 
-    def _enrich_base_cloud(self, assigned_cloud: np.ndarray):
+    def _enrich_base_cloud(self, assigned_cloud: np.ndarray, downsample_factor: int = 1):
         extra_fields = list()
 
         # We have to check extra field existence before. It could be a cloud from a previous run
@@ -92,6 +92,13 @@ class StandaloneLASProcessing(FinProcessing):
             # The base file is maybe not in point_format == 6 but since it's a copy it won't hurt
             # the base file in itself.
             self.base_cloud = laspy.convert(self.base_cloud, point_format_id=2, file_version="1.4")
+
+        # Downsample by keeping every Nth point
+        if downsample_factor > 1:
+            self.base_cloud.points = self.base_cloud.points[::downsample_factor]
+            # Ensure the underlying array is C-contiguous after slicing,
+            # as laspy's writer requires it for memoryview().
+            self.base_cloud.points.array = np.ascontiguousarray(self.base_cloud.points.array)
 
         self.base_cloud.write(str(self.output_basepath) + "_tree_ID_dist_axes.las")
 

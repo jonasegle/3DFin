@@ -70,8 +70,11 @@ class ApplicationWorker(QObject):
         try:
             self.processing_object.process()
         except MemoryError:
+            print("!!! MemoryError in worker thread", flush=True)
             self.memory_error.emit()
         except Exception as e:
+            print(f"!!! Exception in worker thread: {e}", flush=True)
+            traceback.print_exc()
             self.error.emit(str(e), traceback.format_exc())
         self.finished.emit()
 
@@ -471,8 +474,8 @@ class Application(QMainWindow):
         self.worker.finished.connect(self.processing_object._post_processing_hook)
         self.worker.finished.connect(self._show_normalization_warning)
         self.worker.finished.connect(_enable_btn)
-        self.worker.error.connect(_error_handling)
-        self.worker.memory_error.connect(_memory_error_handling)
+        self.worker.error.connect(_error_handling, Qt.ConnectionType.QueuedConnection)
+        self.worker.memory_error.connect(_memory_error_handling, Qt.ConnectionType.QueuedConnection)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.start()
