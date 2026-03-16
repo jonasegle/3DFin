@@ -420,6 +420,14 @@ class ExpertParameters(BaseModel):
     )
 
     ### Output ###
+    # Whether to export point clouds as compressed LAZ instead of LAS
+    export_laz: bool = Field(
+        title="Export as LAZ (compressed)",
+        description="Export point clouds as compressed LAZ files instead of uncompressed LAS.\n"
+        "LAZ files are significantly smaller and can be faster to write thanks to "
+        "multi-threaded compression (requires the lazrs package).",
+        default=True,
+    )
     # Downsampling factor for the enriched point cloud export (tree_ID_dist_axes.las)
     dist_axes_downsample: int = Field(
         title="Dist-axes cloud downsample factor",
