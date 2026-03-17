@@ -673,7 +673,7 @@ class FinProcessing(ABC):
 
         # Filter sections whose radii deviate from the expected linear taper
         R = dm.filter_radius_outliers(
-            R, sections,
+            R, sections, sector_perct,
             mad_multiplier=config.expert.taper_mad_multiplier,
             max_slope_ci=config.expert.taper_max_slope_ci,
         )
