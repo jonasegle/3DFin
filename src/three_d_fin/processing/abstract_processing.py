@@ -665,6 +665,19 @@ class FinProcessing(ABC):
         del stems
         gc.collect()
 
+        # Filter sections with abnormally low sector occupancy for their tree
+        R = dm.filter_occupancy_outliers(
+            R, sector_perct,
+            mad_multiplier=config.expert.occupancy_mad_multiplier,
+        )
+
+        # Filter sections whose radii deviate from the expected linear taper
+        R = dm.filter_radius_outliers(
+            R, sections,
+            mad_multiplier=config.expert.taper_mad_multiplier,
+            max_slope_ci=config.expert.taper_max_slope_ci,
+        )
+
         # Once every circle on every tree is fitted, outliers are detected.
         np.seterr(divide="ignore", invalid="ignore")
         outliers = dm.tilt_detection(X_c, Y_c, R, sections, w_1=3, w_2=1)

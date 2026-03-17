@@ -361,7 +361,36 @@ class ExpertParameters(BaseModel):
         description="Maximum allowed fractional deviation of a section radius from its nearest valid neighbor.",
         gt=0.0,
         le=1.0,
-        default=0.5,
+        default=0.05,
+    )
+
+    ### Taper filtering ###
+    # Multiplier for MAD-based residual threshold during taper filtering
+    taper_mad_multiplier: float = Field(
+        title="Taper filter MAD multiplier",
+        description="Multiplier for the Median Absolute Deviation used as the "
+        "outlier threshold when filtering sections by linear taper. "
+        "Higher values are more permissive.",
+        gt=0.0,
+        default=3.0,
+    )
+
+    taper_max_slope_ci: float = Field(
+        title="Maximum taper slope CI width",
+        description="Maximum allowed confidence interval width on the Theil-Sen "
+        "taper slope. Trees exceeding this have all sections invalidated. "
+        "Lower values are stricter.",
+        gt=0.0,
+        default=0.2,
+    )
+
+    occupancy_mad_multiplier: float = Field(
+        title="Occupancy filter MAD multiplier",
+        description="Multiplier for the Median Absolute Deviation used as the "
+        "outlier threshold when filtering sections by sector occupancy. "
+        "Higher values are more permissive.",
+        gt=0.0,
+        default=3.0,
     )
 
     ### Drawing circles and axes ###
