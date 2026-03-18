@@ -240,7 +240,6 @@ class CloudComparePluginProcessing(FinProcessing):
         dbh_values,
         tree_locations,
         tree_heights,
-        cloud_size,
         cloud_shape,
     ):
         """Revert the Global shift in tabular data when needed.
@@ -280,6 +279,5 @@ class CloudComparePluginProcessing(FinProcessing):
             dbh_values,
             tree_locations,
             tree_heights,
-            cloud_size,
             cloud_shape,
         )
