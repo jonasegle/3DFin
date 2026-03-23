@@ -30,7 +30,7 @@ class BasicParameters(BaseModel):
         "to find stems with minimum presence of shrubs or branches. \n"
         "Reasonable values are 2-5 meters.",
         gt=0,
-        default=5,
+        default=12.0,
         hint="meters",
     )
     # Lower limit (vertical) of the stripe where it should be reasonable to find trunks with minimum presence of shrubs or branchs.
@@ -194,7 +194,7 @@ class ExpertParameters(BaseModel):
         "that points need to extend through to be valid stems.",
         ge=0,
         le=1,
-        default=0.7,
+        default=0.3,
         hint="[0, 1]",
     )
 
@@ -281,6 +281,17 @@ class ExpertParameters(BaseModel):
         gt=0,
         default=25.0,
         hint="degrees",
+    )
+
+    # Height threshold for sub-canopy tree classification
+    sub_canopy_threshold: float = Field(
+        title="Sub-canopy height threshold",
+        description="Trees whose stem cluster height is below this threshold "
+        "are classified as sub-canopy. Their height is set to the stem "
+        "cluster height instead of the highest assigned point.",
+        gt=0,
+        default=1.0,
+        hint="meters",
     )
 
     ### Extracting sections ###

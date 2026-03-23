@@ -566,6 +566,7 @@ class FinProcessing(ABC):
             Y_field,
             Z_field,
             tree_id_field=-1,
+            sub_canopy_threshold=config.expert.sub_canopy_threshold,
             progress_hook=self.progress.update,
         )
         del coords
