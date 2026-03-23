@@ -1,6 +1,8 @@
 import gc
 import timeit
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +89,8 @@ class FinProcessing(ABC):
             any_of |= Path(str(self.output_basepath) + "_deprecated.xlsx").exists()
         # Check existence of ini output
         any_of |= Path(str(self.output_basepath) + "_config.ini").exists()
+        # Check existence of timings output
+        any_of |= Path(str(self.output_basepath) + "_timings.txt").exists()
         return any_of
 
     @abstractmethod
@@ -299,6 +303,41 @@ class FinProcessing(ABC):
             plot_analysis,
         )
 
+    @staticmethod
+    @contextmanager
+    def _timed(step_name: str, timings_list: list):
+        """Time a block and record it into timings_list, also printing to console."""
+        t = timeit.default_timer()
+        yield
+        elapsed = timeit.default_timer() - t
+        timings_list.append((step_name, elapsed))
+        print("        ", "%.2f" % elapsed, f"s: {step_name}")
+
+    def _write_timings_file(
+        self,
+        timings: list[tuple[str, float]],
+        cloud_size_millions: float,
+        cloud_area_m2: int,
+        n_trees: int,
+        total_elapsed: float,
+    ):
+        """Write a human-readable timings report to disk."""
+        filepath = Path(str(self.output_basepath) + "_timings.txt")
+        with open(filepath, "w") as f:
+            f.write("3DFin Processing Timings Report\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"{'=' * 60}\n\n")
+            f.write("Cloud Metadata\n")
+            f.write(f"  Point count:  {cloud_size_millions:.2f} million\n")
+            f.write(f"  Area:         {cloud_area_m2} m^2\n")
+            f.write(f"  Trees found:  {n_trees}\n\n")
+            f.write(f"{'Step':<45} {'Time (s)':>10}\n")
+            f.write(f"{'-' * 45} {'-' * 10}\n")
+            for step_name, elapsed in timings:
+                f.write(f"{step_name:<45} {elapsed:>10.2f}\n")
+            f.write(f"{'-' * 45} {'-' * 10}\n")
+            f.write(f"{'TOTAL':<45} {total_elapsed:>10.2f}\n")
+
     def process(self):
         """3DFin main algorithm.
 
@@ -393,9 +432,11 @@ class FinProcessing(ABC):
         config = self.config
 
         t_t = timeit.default_timer()
+        timings: list[tuple[str, float]] = []
 
         # load the base_cloud if needed
-        self._load_base_cloud()
+        with self._timed("Loading base cloud", timings):
+            self._load_base_cloud()
 
         if config.misc.is_normalized:
             coords = self._get_xyz_z0_from_base()
@@ -404,16 +445,17 @@ class FinProcessing(ABC):
             print("Analyzing cloud size...")
             print("---------------------------------------------")
 
-            _, _, voxelated_ground = dm.voxelate(
-                coords[coords[:, 3] < 0.5, 0:3].astype(np.float64),
-                1,
-                2000,
-                n_digits,
-                with_n_points=False,
-            )
-            cloud_size = coords.shape[0] / 1000000
-            cloud_shape = voxelated_ground.shape[0]
-            del voxelated_ground
+            with self._timed("Cloud analysis", timings):
+                _, _, voxelated_ground = dm.voxelate(
+                    coords[coords[:, 3] < 0.5, 0:3].astype(np.float64),
+                    1,
+                    2000,
+                    n_digits,
+                    with_n_points=False,
+                )
+                cloud_size = coords.shape[0] / 1000000
+                cloud_shape = voxelated_ground.shape[0]
+                del voxelated_ground
             print("   This cloud has", "{:.2f}".format(cloud_size), "million points")
             print("   Its area is ", cloud_shape, "m^2")
 
@@ -429,12 +471,13 @@ class FinProcessing(ABC):
             print("Analyzing cloud size...")
             print("---------------------------------------------")
 
-            _, _, voxelated_ground = dm.voxelate(coords.astype(np.float64), 1, 2000, n_digits, with_n_points=False)
-            cloud_size = coords.shape[0] / 1000000
-            cloud_shape = voxelated_ground.shape[0]
+            with self._timed("Cloud analysis", timings):
+                _, _, voxelated_ground = dm.voxelate(coords.astype(np.float64), 1, 2000, n_digits, with_n_points=False)
+                cloud_size = coords.shape[0] / 1000000
+                cloud_shape = voxelated_ground.shape[0]
+                del voxelated_ground
             print("   This cloud has", "{:.2f}".format(cloud_size), "million points")
             print("   Its area is ", cloud_shape, "m^2")
-            del voxelated_ground
 
             print("---------------------------------------------")
             print("Cloud is not normalized...")
@@ -444,300 +487,292 @@ class FinProcessing(ABC):
                 print("---------------------------------------------")
                 print("And there is noise. Reducing it...")
                 print("---------------------------------------------")
-                t = timeit.default_timer()
-                # Noise elimination
-                clean_points = dm.clean_ground(
-                    coords,
-                    config.expert.res_ground,
-                    config.expert.min_points_ground,
-                )
-
-                elapsed = timeit.default_timer() - t
-                print("        ", "%.2f" % elapsed, "s: denoising")
+                with self._timed("Denoising", timings):
+                    # Noise elimination
+                    clean_points = dm.clean_ground(
+                        coords,
+                        config.expert.res_ground,
+                        config.expert.min_points_ground,
+                    )
 
                 print("---------------------------------------------")
                 print("Generating a Digital Terrain Model...")
                 print("---------------------------------------------")
-                t = timeit.default_timer()
-                # Extracting ground points and DTM ## MAYBE ADD VOXELIZATION HERE
-                cloth_nodes = dm.generate_dtm(clean_points)
-                del clean_points
-
-                elapsed = timeit.default_timer() - t
-                print("        ", "%.2f" % elapsed, "s: generating the DTM")
+                with self._timed("Generating DTM", timings):
+                    # Extracting ground points and DTM ## MAYBE ADD VOXELIZATION HERE
+                    cloth_nodes = dm.generate_dtm(clean_points)
+                    del clean_points
 
             else:
                 print("---------------------------------------------")
                 print("Generating a Digital Terrain Model...")
                 print("---------------------------------------------")
-                t = timeit.default_timer()
-                # Extracting ground points and DTM
-                cloth_nodes = dm.generate_dtm(coords, cloth_resolution=config.basic.res_cloth)
-
-                elapsed = timeit.default_timer() - t
-                print("        ", "%.2f" % elapsed, "s: generating the DTM")
+                with self._timed("Generating DTM", timings):
+                    # Extracting ground points and DTM
+                    cloth_nodes = dm.generate_dtm(coords, cloth_resolution=config.basic.res_cloth)
 
             print("---------------------------------------------")
             print("Cleaning and exporting the Digital Terrain Model...")
             print("---------------------------------------------")
-            t = timeit.default_timer()
-            # Cleaning the DTM
-            dtm = dm.clean_cloth(cloth_nodes)
+            with self._timed("Cleaning and exporting DTM", timings):
+                # Cleaning the DTM
+                dtm = dm.clean_cloth(cloth_nodes)
 
-            # Completing the DTM
-            completed_dtm = dm.complete_dtm(dtm)
+                # Completing the DTM
+                completed_dtm = dm.complete_dtm(dtm)
 
-            # export DTM
-            self._export_dtm(completed_dtm)
-
-            elapsed = timeit.default_timer() - t
-            print("        ", "%.2f" % elapsed, "s: exporting the DTM")
+                # export DTM
+                self._export_dtm(completed_dtm)
 
             # Normalizing the point cloud
             print("---------------------------------------------")
             print("Normalizing the point cloud and running the algorithm...")
             print("---------------------------------------------")
-            t = timeit.default_timer()
-            z0_values = dm.normalize_heights(coords, dtm)
-            del cloth_nodes, dtm, completed_dtm
-            coords_full = np.empty((coords.shape[0], 4), dtype=coords.dtype)
-            coords_full[:, :3] = coords
-            del coords
-            coords_full[:, 3] = z0_values
-            del z0_values
-            coords = coords_full
-            del coords_full
+            with self._timed("Normalizing point cloud", timings):
+                z0_values = dm.normalize_heights(coords, dtm)
+                del cloth_nodes, dtm, completed_dtm
+                coords_full = np.empty((coords.shape[0], 4), dtype=coords.dtype)
+                coords_full[:, :3] = coords
+                del coords
+                coords_full[:, 3] = z0_values
+                del z0_values
+                coords = coords_full
+                del coords_full
 
-            # Check that the normalization is correct.
-            self.area_warning, area_discrepancy = dm.check_normalization_discrepancy(coords[:, [0, 1, 3]], cloud_shape)
-
-            elapsed = timeit.default_timer() - t
-            print("        ", "%.2f" % elapsed, "s: Normalizing the point cloud")
+                # Check that the normalization is correct.
+                self.area_warning, area_discrepancy = dm.check_normalization_discrepancy(
+                    coords[:, [0, 1, 3]], cloud_shape
+                )
             print(
                 "         => Normalization area discrepancy:",
                 "%.2f" % area_discrepancy,
                 "%",
             )
-            elapsed = timeit.default_timer() - t_t
-            print("        ", "%.2f" % elapsed, "s: Total preprocessing time")
+            elapsed_preproc = timeit.default_timer() - t_t
+            timings.append(("--- Total preprocessing", elapsed_preproc))
+            print("        ", "%.2f" % elapsed_preproc, "s: Total preprocessing time")
 
         print("---------------------------------------------")
         print("1.-Extracting the stripe and peeling the stems...")
         print("---------------------------------------------")
 
-        stripe = coords[
-            (coords[:, 3] > config.basic.lower_limit) & (coords[:, 3] < config.basic.upper_limit),
-            0:4,
-        ]
+        with self._timed("Step 1: Stripe extraction and stem peeling", timings):
+            stripe = coords[
+                (coords[:, 3] > config.basic.lower_limit) & (coords[:, 3] < config.basic.upper_limit),
+                0:4,
+            ]
 
-        h_range_value = config.expert.height_range * (config.basic.upper_limit - config.basic.lower_limit)
+            h_range_value = config.expert.height_range * (config.basic.upper_limit - config.basic.lower_limit)
 
-        clust_stripe = dm.verticality_clustering(
-            stripe,
-            config.expert.verticality_scale_stripe,
-            config.expert.verticality_thresh_stripe,
-            config.expert.number_of_points,
-            config.basic.number_of_iterations,
-            config.expert.res_xy_stripe,
-            config.expert.res_z_stripe,
-            n_digits,
-            h_range_value=h_range_value,
-        )
+            clust_stripe = dm.verticality_clustering(
+                stripe,
+                config.expert.verticality_scale_stripe,
+                config.expert.verticality_thresh_stripe,
+                config.expert.number_of_points,
+                config.basic.number_of_iterations,
+                config.expert.res_xy_stripe,
+                config.expert.res_z_stripe,
+                n_digits,
+                h_range_value=h_range_value,
+            )
 
         print("---------------------------------------------")
         print("2.-Computing distances to axes and individualizating trees...")
         print("---------------------------------------------")
 
-        assigned_cloud, tree_vector, tree_heights = dm.individualize_trees(
-            coords,
-            clust_stripe,
-            config.expert.res_z,
-            config.expert.res_xy,
-            config.basic.lower_limit,
-            config.basic.upper_limit,
-            config.expert.height_range,
-            config.expert.maximum_d,
-            config.expert.minimum_points,
-            config.expert.distance_to_axis,
-            config.expert.maximum_dev,
-            config.expert.res_heights,
-            n_digits,
-            X_field,
-            Y_field,
-            Z_field,
-            tree_id_field=-1,
-            sub_canopy_threshold=config.expert.sub_canopy_threshold,
-            progress_hook=self.progress.update,
-        )
-        del coords
-        gc.collect()
+        with self._timed("Step 2: Tree individualization", timings):
+            assigned_cloud, tree_vector, tree_heights = dm.individualize_trees(
+                coords,
+                clust_stripe,
+                config.expert.res_z,
+                config.expert.res_xy,
+                config.basic.lower_limit,
+                config.basic.upper_limit,
+                config.expert.height_range,
+                config.expert.maximum_d,
+                config.expert.minimum_points,
+                config.expert.distance_to_axis,
+                config.expert.maximum_dev,
+                config.expert.res_heights,
+                n_digits,
+                X_field,
+                Y_field,
+                Z_field,
+                tree_id_field=-1,
+                sub_canopy_threshold=config.expert.sub_canopy_threshold,
+                progress_hook=self.progress.update,
+            )
+            del coords
+            gc.collect()
 
         print("  ")
         print("---------------------------------------------")
         print("3.-Exporting complete cloud and stripe...")
         print("---------------------------------------------")
 
-        t_las = timeit.default_timer()
-        # Export Stripe
+        with self._timed("Step 3: Export cloud and stripe", timings):
+            # Export Stripe
+            clean_stripe = clust_stripe[np.isin(clust_stripe[:, -1], tree_vector[:, 0])]
 
-        clean_stripe = clust_stripe[np.isin(clust_stripe[:, -1], tree_vector[:, 0])]
+            self._export_stripe(clean_stripe)
+            del stripe, clust_stripe, clean_stripe
 
-        self._export_stripe(clean_stripe)
-        del stripe, clust_stripe, clean_stripe
+            # Whole cloud including new
+            self._enrich_base_cloud(assigned_cloud, downsample_factor=config.expert.dist_axes_downsample)
+            del self.base_cloud
+            gc.collect()
 
-        # Whole cloud including new
-        self._enrich_base_cloud(assigned_cloud, downsample_factor=config.expert.dist_axes_downsample)
-        del self.base_cloud
-        gc.collect()
-
-        elapsed_las = timeit.default_timer() - t_las
-        print("Total time:", "   %.2f" % elapsed_las, "s")
-
-        # Export tree heights
-        self._export_tree_height(tree_heights)
+            # Export tree heights
+            self._export_tree_height(tree_heights)
 
         # stem extraction and curation
         print("---------------------------------------------")
         print("4.-Extracting and curating stems...")
         print("---------------------------------------------")
 
-        xyz0_coords = assigned_cloud[
-            (assigned_cloud[:, 5] < (config.advanced.stem_search_diameter / 2.0))
-            & (assigned_cloud[:, 3] > config.advanced.minimum_height)
-            & (assigned_cloud[:, 3] < config.advanced.maximum_height + config.advanced.section_wid),
-            :,
-        ]
-        # Extract lightweight data for crown coverage before releasing assigned_cloud
-        crown_data = assigned_cloud[:, [0, 1, 3]].copy()  # (x, y, z0)
-        del assigned_cloud
-        gc.collect()
+        with self._timed("Step 4: Extract and curate stems", timings):
+            xyz0_coords = assigned_cloud[
+                (assigned_cloud[:, 5] < (config.advanced.stem_search_diameter / 2.0))
+                & (assigned_cloud[:, 3] > config.advanced.minimum_height)
+                & (assigned_cloud[:, 3] < config.advanced.maximum_height + config.advanced.section_wid),
+                :,
+            ]
+            # Extract lightweight data for crown coverage before releasing assigned_cloud
+            crown_data = assigned_cloud[:, [0, 1, 3]].copy()  # (x, y, z0)
+            del assigned_cloud
+            gc.collect()
 
-        stems = dm.verticality_clustering(
-            xyz0_coords,
-            config.expert.verticality_scale_stripe,
-            config.expert.verticality_thresh_stripe,
-            config.expert.number_of_points,
-            config.basic.number_of_iterations,
-            config.expert.res_xy_stripe,
-            config.expert.res_z_stripe,
-            n_digits,
-        )[:, 0:6]
+            stems = dm.verticality_clustering(
+                xyz0_coords,
+                config.expert.verticality_scale_stripe,
+                config.expert.verticality_thresh_stripe,
+                config.expert.number_of_points,
+                config.basic.number_of_iterations,
+                config.expert.res_xy_stripe,
+                config.expert.res_z_stripe,
+                n_digits,
+            )[:, 0:6]
 
-        self._export_stripe(stems, suffix="_stems")
+            self._export_stripe(stems, suffix="_stems")
 
         # Computing circles
         print("---------------------------------------------")
         print("5.-Computing diameters along stems...")
         print("---------------------------------------------")
 
-        sections = np.arange(
-            config.advanced.minimum_height,
-            config.advanced.maximum_height,
-            config.advanced.section_len,
-        )  # Range of uniformly spaced values within the specified interval
+        with self._timed("Step 5: Compute diameters", timings):
+            sections = np.arange(
+                config.advanced.minimum_height,
+                config.advanced.maximum_height,
+                config.advanced.section_len,
+            )  # Range of uniformly spaced values within the specified interval
 
-        (
-            X_c,
-            Y_c,
-            R,
-            check_circle,
-            pass_method,
-            sector_perct,
-            n_points_in,
-        ) = dm.compute_sections(
-            stems,
-            sections,
-            config.advanced.section_wid,
-            config.expert.diameter_proportion,
-            config.expert.point_threshold,
-            config.expert.minimum_diameter / 2.0,
-            config.advanced.maximum_diameter / 2.0,
-            config.expert.point_distance,
-            config.expert.number_points_section,
-            config.expert.number_sectors,
-            config.expert.m_number_sectors,
-            config.expert.circle_width,
-            inflation_factor=config.expert.inflation_factor,
-            max_relative_deviation=config.expert.max_relative_deviation,
-            progress_hook=self.progress.update,
-        )
-        del stems
-        gc.collect()
+            (
+                X_c,
+                Y_c,
+                R,
+                check_circle,
+                pass_method,
+                sector_perct,
+                n_points_in,
+            ) = dm.compute_sections(
+                stems,
+                sections,
+                config.advanced.section_wid,
+                config.expert.diameter_proportion,
+                config.expert.point_threshold,
+                config.expert.minimum_diameter / 2.0,
+                config.advanced.maximum_diameter / 2.0,
+                config.expert.point_distance,
+                config.expert.number_points_section,
+                config.expert.number_sectors,
+                config.expert.m_number_sectors,
+                config.expert.circle_width,
+                inflation_factor=config.expert.inflation_factor,
+                max_relative_deviation=config.expert.max_relative_deviation,
+                progress_hook=self.progress.update,
+            )
+            del stems
+            gc.collect()
 
-        # Filter sections with abnormally low sector occupancy for their tree
-        R = dm.filter_occupancy_outliers(
-            R, sector_perct,
-            mad_multiplier=config.expert.occupancy_mad_multiplier,
-        )
+        with self._timed("Step 5a: Filter occupancy outliers", timings):
+            # Filter sections with abnormally low sector occupancy for their tree
+            R = dm.filter_occupancy_outliers(
+                R, sector_perct,
+                mad_multiplier=config.expert.occupancy_mad_multiplier,
+            )
 
-        # Filter sections whose radii deviate from the expected linear taper
-        R = dm.filter_radius_outliers(
-            R, sections, sector_perct,
-            mad_multiplier=config.expert.taper_mad_multiplier,
-            max_slope_ci=config.expert.taper_max_slope_ci,
-        )
+        with self._timed("Step 5b: Filter radius outliers", timings):
+            # Filter sections whose radii deviate from the expected linear taper
+            R = dm.filter_radius_outliers(
+                R, sections, sector_perct,
+                mad_multiplier=config.expert.taper_mad_multiplier,
+                max_slope_ci=config.expert.taper_max_slope_ci,
+            )
 
-        # Once every circle on every tree is fitted, outliers are detected.
-        np.seterr(divide="ignore", invalid="ignore")
-        outliers = dm.tilt_detection(X_c, Y_c, R, sections, w_1=3, w_2=1)
-        np.seterr(divide="warn", invalid="warn")
+        with self._timed("Step 5c: Tilt detection", timings):
+            # Once every circle on every tree is fitted, outliers are detected.
+            np.seterr(divide="ignore", invalid="ignore")
+            outliers = dm.tilt_detection(X_c, Y_c, R, sections, w_1=3, w_2=1)
+            np.seterr(divide="warn", invalid="warn")
 
         print("  ")
         print("---------------------------------------------")
         print("6.-Drawing circles and axes...")
         print("---------------------------------------------")
 
-        t_las2 = timeit.default_timer()
+        with self._timed("Step 6a: Generate and export circles", timings):
+            circles_coords = dm.generate_circles_cloud(
+                X_c,
+                Y_c,
+                R,
+                sections,
+                check_circle,
+                sector_perct,
+                n_points_in,
+                tree_vector,
+                outliers,
+                pass_method,
+                config.expert.minimum_diameter / 2.0,
+                config.advanced.maximum_diameter / 2.0,
+                config.expert.point_threshold,
+                config.expert.number_sectors,
+                config.expert.m_number_sectors,
+                config.expert.circa,
+            )
 
-        circles_coords = dm.generate_circles_cloud(
-            X_c,
-            Y_c,
-            R,
-            sections,
-            check_circle,
-            sector_perct,
-            n_points_in,
-            tree_vector,
-            outliers,
-            pass_method,
-            config.expert.minimum_diameter / 2.0,
-            config.advanced.maximum_diameter / 2.0,
-            config.expert.point_threshold,
-            config.expert.number_sectors,
-            config.expert.m_number_sectors,
-            config.expert.circa,
-        )
+            # Export circles
+            self._export_circles(circles_coords)
 
-        # Export circles
-        self._export_circles(circles_coords)
+        with self._timed("Step 6b: Generate and export axes", timings):
+            axes, tilt = dm.generate_axis_cloud(
+                tree_vector,
+                config.expert.axis_downstep,
+                config.expert.axis_upstep,
+                config.basic.lower_limit,
+                config.basic.upper_limit,
+                config.expert.p_interval,
+            )
 
-        axes, tilt = dm.generate_axis_cloud(
-            tree_vector,
-            config.expert.axis_downstep,
-            config.expert.axis_upstep,
-            config.basic.lower_limit,
-            config.basic.upper_limit,
-            config.expert.p_interval,
-        )
+            # Export axes
+            self._export_axes(axes, tilt)
 
-        # Export axes
-        self._export_axes(axes, tilt)
+        with self._timed("Step 6c: Tree locator and export", timings):
+            dbh_values, tree_locations = dm.tree_locator(
+                sections,
+                X_c,
+                Y_c,
+                tree_vector,
+                sector_perct,
+                R,
+                outliers,
+                X_field,
+                Y_field,
+                Z_field,
+            )
 
-        dbh_values, tree_locations = dm.tree_locator(
-            sections,
-            X_c,
-            Y_c,
-            tree_vector,
-            sector_perct,
-            R,
-            outliers,
-            X_field,
-            Y_field,
-            Z_field,
-        )
-
-        # Export tree locations
-        self._export_tree_locations(tree_locations, dbh_values)
+            # Export tree locations
+            self._export_tree_locations(tree_locations, dbh_values)
 
         # -------------------------------------------------------------------------------------------------------------
         # In-depth tree and plot analysis
@@ -747,55 +782,63 @@ class FinProcessing(ABC):
         print("7.-Computing tree and plot analysis...")
         print("---------------------------------------------")
 
-        tree_analysis = compute_tree_analysis(
-            R=R,
-            sections=sections,
-            outliers=outliers,
-            sector_perct=sector_perct,
-            n_points_in=n_points_in,
-            dbh_values=dbh_values,
-            tree_heights=tree_heights,
-            tree_locations=tree_locations,
-            min_radius=config.expert.minimum_diameter / 2.0,
-            max_radius=config.advanced.maximum_diameter / 2.0,
-            min_sector_perct=config.expert.m_number_sectors / config.expert.number_sectors * 100,
-            point_threshold=config.expert.point_threshold,
-        )
+        with self._timed("Step 7: Tree and plot analysis", timings):
+            tree_analysis = compute_tree_analysis(
+                R=R,
+                sections=sections,
+                outliers=outliers,
+                sector_perct=sector_perct,
+                n_points_in=n_points_in,
+                dbh_values=dbh_values,
+                tree_heights=tree_heights,
+                tree_locations=tree_locations,
+                min_radius=config.expert.minimum_diameter / 2.0,
+                max_radius=config.advanced.maximum_diameter / 2.0,
+                min_sector_perct=config.expert.m_number_sectors / config.expert.number_sectors * 100,
+                point_threshold=config.expert.point_threshold,
+            )
 
-        plot_analysis = compute_plot_analysis(
-            tree_analysis=tree_analysis,
-            crown_cloud=crown_data,
-            cloud_shape=cloud_shape,
-        )
+            plot_analysis = compute_plot_analysis(
+                tree_analysis=tree_analysis,
+                crown_cloud=crown_data,
+                cloud_shape=cloud_shape,
+            )
 
         # -------------------------------------------------------------------------------------------------------------
         # Exporting results
         # -------------------------------------------------------------------------------------------------------------
 
-        self._export_tabular_data(
-            config,
-            self.output_basepath,
-            X_c,
-            Y_c,
-            R,
-            check_circle,
-            sector_perct,
-            n_points_in,
-            sections,
-            outliers,
-            dbh_values,
-            tree_locations,
-            tree_heights,
-            cloud_shape,
-            tree_analysis,
-            plot_analysis,
-        )
-        elapsed_las2 = timeit.default_timer() - t_las2
-        print("Total time:", "   %.2f" % elapsed_las2, "s")
+        with self._timed("Step 7a: Export tabular data", timings):
+            self._export_tabular_data(
+                config,
+                self.output_basepath,
+                X_c,
+                Y_c,
+                R,
+                check_circle,
+                sector_perct,
+                n_points_in,
+                sections,
+                outliers,
+                dbh_values,
+                tree_locations,
+                tree_heights,
+                cloud_shape,
+                tree_analysis,
+                plot_analysis,
+            )
 
         elapsed_t = timeit.default_timer() - t_t
 
         config.to_config_file(Path(str(self.output_basepath) + "_config.ini"))
+
+        self._write_timings_file(
+            timings=timings,
+            cloud_size_millions=cloud_size,
+            cloud_area_m2=cloud_shape,
+            n_trees=X_c.shape[0],
+            total_elapsed=elapsed_t,
+        )
 
         # -------------------------------------------------------------------------------------------------------------
         print("---------------------------------------------")
