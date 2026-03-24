@@ -16,6 +16,9 @@ class CloudComparePluginProcessing(FinProcessing):
 
     group_name: str
 
+    # pycc's database API is not thread-safe.
+    _supports_async_io: bool = False
+
     @staticmethod
     def write_sf(point_cloud: pycc.ccPointCloud, scalar_field: np.ndarray, name: str):
         """Write a scalar field on a pycc.PointCloud.

@@ -1,6 +1,6 @@
 import configparser
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import laspy
 from pydantic import (
@@ -186,6 +186,17 @@ class ExpertParameters(BaseModel):
         lt=1.0,
         default=0.7,
         hint="(0, 1)",
+    )
+    # Number of verticality clustering iterations during stem curation (Step 4).
+    stem_curation_iterations: int = Field(
+        title="Stem curation intensity",
+        description="Number of verticality clustering iterations during stem curation (Step 4). "
+        "Since stems have already been identified in Step 1, fewer iterations are typically needed. "
+        "Set to the same value as 'Pruning intensity' for backward-compatible behavior.",
+        ge=1,
+        le=5,
+        default=1,
+        hint="1-5",
     )
     # Only stems where points extend vertically throughout this range are considered.
     height_range: float = Field(
@@ -460,6 +471,17 @@ class ExpertParameters(BaseModel):
     )
 
     ### Output ###
+    # Controls point cloud export behaviour.
+    export_mode: Literal["default", "async", "off"] = Field(
+        title="Point cloud export mode",
+        description="Controls how point cloud files (LAS/LAZ) are exported.\n"
+        '"default": export synchronously (safest, blocks pipeline during write).\n'
+        '"async": export the enriched cloud in a background thread (faster, uses more RAM).\n'
+        '"off": skip all point cloud exports, only output tabular data. '
+        "This can dramatically reduce runtime on very large clouds.",
+        default="off",
+        hint="default|async|off",
+    )
     # Whether to export point clouds as compressed LAZ instead of LAS
     export_laz: bool = Field(
         title="Export as LAZ (compressed)",

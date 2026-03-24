@@ -94,6 +94,12 @@ class StandaloneLASProcessing(FinProcessing):
                 self.base_cloud.add_extra_dim(laspy.ExtraBytesParams(name="Z0", type=np.float64))
             self.base_cloud.Z0 = assigned_cloud[:, 3]
 
+        # Release reference to assigned_cloud early — field data has been
+        # copied into base_cloud's internal arrays.  When running in a
+        # background thread this lets the GC reclaim assigned_cloud as soon
+        # as the main thread also drops its reference.
+        del assigned_cloud
+
         if self.base_cloud.header.version < laspy.header.Version(major=1, minor=4):
             # The base file is maybe not in point_format == 6 but since it's a copy it won't hurt
             # the base file in itself.

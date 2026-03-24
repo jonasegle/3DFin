@@ -1,4 +1,5 @@
 import gc
+import threading
 import timeit
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -33,6 +34,14 @@ class FinProcessing(ABC):
     overwrite: bool = False
 
     area_warning: bool = False
+
+    # Whether this backend supports async (threaded) point cloud writes.
+    # Subclasses whose export methods are not thread-safe (e.g. CloudCompare
+    # plugin) should set this to False.  When False, export_mode="async" in
+    # config is silently downgraded to "default".
+    _supports_async_io: bool = True
+
+    _async_write_thread: threading.Thread | None = None
 
     def __init__(self, config: FinConfiguration) -> None:
         """Init the FinProcessing object.
@@ -313,6 +322,15 @@ class FinProcessing(ABC):
         timings_list.append((step_name, elapsed))
         print("        ", "%.2f" % elapsed, f"s: {step_name}")
 
+    def _join_async_write(self):
+        """Wait for any pending async I/O thread to complete and free resources."""
+        if self._async_write_thread is not None:
+            self._async_write_thread.join()
+            self._async_write_thread = None
+            if hasattr(self, "base_cloud"):
+                del self.base_cloud
+            gc.collect()
+
     def _write_timings_file(
         self,
         timings: list[tuple[str, float]],
@@ -431,6 +449,12 @@ class FinProcessing(ABC):
         # Aliasing config
         config = self.config
 
+        # Resolve effective export mode: downgrade "async" to "default" if
+        # this backend doesn't support threaded writes.
+        export_mode = config.expert.export_mode
+        if export_mode == "async" and not self._supports_async_io:
+            export_mode = "default"
+
         t_t = timeit.default_timer()
         timings: list[tuple[str, float]] = []
 
@@ -522,7 +546,8 @@ class FinProcessing(ABC):
                 completed_dtm = dm.complete_dtm(dtm)
 
                 # export DTM
-                self._export_dtm(completed_dtm)
+                if export_mode != "off":
+                    self._export_dtm(completed_dtm)
 
             # Normalizing the point cloud
             print("---------------------------------------------")
@@ -611,19 +636,42 @@ class FinProcessing(ABC):
         print("---------------------------------------------")
 
         with self._timed("Step 3: Export cloud and stripe", timings):
-            # Export Stripe
-            clean_stripe = clust_stripe[np.isin(clust_stripe[:, -1], tree_vector[:, 0])]
+            if export_mode != "off":
+                # Export Stripe
+                clean_stripe = clust_stripe[np.isin(clust_stripe[:, -1], tree_vector[:, 0])]
+                self._export_stripe(clean_stripe)
+                del clean_stripe
 
-            self._export_stripe(clean_stripe)
-            del stripe, clust_stripe, clean_stripe
+                # Export tree heights
+                self._export_tree_height(tree_heights)
 
-            # Whole cloud including new
-            self._enrich_base_cloud(assigned_cloud, downsample_factor=config.expert.dist_axes_downsample)
-            del self.base_cloud
-            gc.collect()
+                # Enrich and write the full cloud.  In "async" mode the
+                # (slow) LAZ write runs in a background thread so Step 4
+                # can start immediately.  lazrs releases the GIL during
+                # compression so the thread gets true concurrency with
+                # numpy work in the main thread.
+                if export_mode == "async":
+                    self._async_write_thread = threading.Thread(
+                        target=self._enrich_base_cloud,
+                        args=(assigned_cloud,),
+                        kwargs={"downsample_factor": config.expert.dist_axes_downsample},
+                        daemon=True,
+                    )
+                    self._async_write_thread.start()
+                else:
+                    self._enrich_base_cloud(
+                        assigned_cloud, downsample_factor=config.expert.dist_axes_downsample
+                    )
+                    del self.base_cloud
+                    gc.collect()
+            else:
+                # No point cloud exports — free base_cloud immediately to
+                # reduce peak RAM during subsequent steps.
+                if hasattr(self, "base_cloud"):
+                    del self.base_cloud
+                gc.collect()
 
-            # Export tree heights
-            self._export_tree_height(tree_heights)
+            del stripe, clust_stripe
 
         # stem extraction and curation
         print("---------------------------------------------")
@@ -638,7 +686,7 @@ class FinProcessing(ABC):
                 :,
             ]
             # Extract lightweight data for crown coverage before releasing assigned_cloud
-            crown_data = assigned_cloud[:, [0, 1, 3]].copy()  # (x, y, z0)
+            crown_data = assigned_cloud[:, [0, 1, 3]]  # (x, y, z0) — fancy indexing already copies
             del assigned_cloud
             gc.collect()
 
@@ -647,13 +695,14 @@ class FinProcessing(ABC):
                 config.expert.verticality_scale_stripe,
                 config.expert.verticality_thresh_stripe,
                 config.expert.number_of_points,
-                config.basic.number_of_iterations,
+                config.expert.stem_curation_iterations,
                 config.expert.res_xy_stripe,
                 config.expert.res_z_stripe,
                 n_digits,
             )[:, 0:6]
 
-            self._export_stripe(stems, suffix="_stems")
+            if export_mode != "off":
+                self._export_stripe(stems, suffix="_stems")
 
         # Computing circles
         print("---------------------------------------------")
@@ -721,41 +770,40 @@ class FinProcessing(ABC):
         print("6.-Drawing circles and axes...")
         print("---------------------------------------------")
 
-        with self._timed("Step 6a: Generate and export circles", timings):
-            circles_coords = dm.generate_circles_cloud(
-                X_c,
-                Y_c,
-                R,
-                sections,
-                check_circle,
-                sector_perct,
-                n_points_in,
-                tree_vector,
-                outliers,
-                pass_method,
-                config.expert.minimum_diameter / 2.0,
-                config.advanced.maximum_diameter / 2.0,
-                config.expert.point_threshold,
-                config.expert.number_sectors,
-                config.expert.m_number_sectors,
-                config.expert.circa,
-            )
+        if export_mode != "off":
+            with self._timed("Step 6a: Generate and export circles", timings):
+                circles_coords = dm.generate_circles_cloud(
+                    X_c,
+                    Y_c,
+                    R,
+                    sections,
+                    check_circle,
+                    sector_perct,
+                    n_points_in,
+                    tree_vector,
+                    outliers,
+                    pass_method,
+                    config.expert.minimum_diameter / 2.0,
+                    config.advanced.maximum_diameter / 2.0,
+                    config.expert.point_threshold,
+                    config.expert.number_sectors,
+                    config.expert.m_number_sectors,
+                    config.expert.circa,
+                )
 
-            # Export circles
-            self._export_circles(circles_coords)
+                self._export_circles(circles_coords)
 
-        with self._timed("Step 6b: Generate and export axes", timings):
-            axes, tilt = dm.generate_axis_cloud(
-                tree_vector,
-                config.expert.axis_downstep,
-                config.expert.axis_upstep,
-                config.basic.lower_limit,
-                config.basic.upper_limit,
-                config.expert.p_interval,
-            )
+            with self._timed("Step 6b: Generate and export axes", timings):
+                axes, tilt = dm.generate_axis_cloud(
+                    tree_vector,
+                    config.expert.axis_downstep,
+                    config.expert.axis_upstep,
+                    config.basic.lower_limit,
+                    config.basic.upper_limit,
+                    config.expert.p_interval,
+                )
 
-            # Export axes
-            self._export_axes(axes, tilt)
+                self._export_axes(axes, tilt)
 
         with self._timed("Step 6c: Tree locator and export", timings):
             dbh_values, tree_locations = dm.tree_locator(
@@ -771,8 +819,8 @@ class FinProcessing(ABC):
                 Z_field,
             )
 
-            # Export tree locations
-            self._export_tree_locations(tree_locations, dbh_values)
+            if export_mode != "off":
+                self._export_tree_locations(tree_locations, dbh_values)
 
         # -------------------------------------------------------------------------------------------------------------
         # In-depth tree and plot analysis
@@ -827,6 +875,12 @@ class FinProcessing(ABC):
                 tree_analysis,
                 plot_analysis,
             )
+
+        # Ensure the async enriched-cloud write has finished before we
+        # report timings or exit.  If it completed during earlier steps this
+        # records ~0 s; otherwise it captures the remaining wait.
+        with self._timed("Waiting for async I/O", timings):
+            self._join_async_write()
 
         elapsed_t = timeit.default_timer() - t_t
 
