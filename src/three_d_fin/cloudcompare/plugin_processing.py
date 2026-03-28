@@ -169,6 +169,10 @@ class CloudComparePluginProcessing(FinProcessing):
         self.base_group.addChild(cloud_tree_heights)
         self.cc_instance.addToDB(cloud_tree_heights, autoExpandDBTree=False)
 
+    def _export_heightmap(self, assigned_cloud: np.ndarray):
+        # CHM export not implemented for CloudCompare plugin context.
+        pass
+
     def _export_circles(self, circles_coords: np.ndarray):
         cloud_circles = pycc.ccPointCloud(circles_coords[:, 0], circles_coords[:, 1], circles_coords[:, 2])
         cloud_circles.copyGlobalShiftAndScale(self.base_cloud)

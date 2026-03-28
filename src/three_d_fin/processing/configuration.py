@@ -479,7 +479,7 @@ class ExpertParameters(BaseModel):
         '"async": export the enriched cloud in a background thread (faster, uses more RAM).\n'
         '"off": skip all point cloud exports, only output tabular data. '
         "This can dramatically reduce runtime on very large clouds.",
-        default="off",
+        default="default",
         hint="default|async|off",
     )
     # Whether to export point clouds as compressed LAZ instead of LAS

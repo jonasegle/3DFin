@@ -129,6 +129,34 @@ class StandaloneLASProcessing(FinProcessing):
 
         las_tree_heights.write(str(self.output_basepath) + f"_tree_heights{self._pc_ext}")
 
+    def _export_heightmap(self, assigned_cloud: np.ndarray, resolution: float = 1.0):
+        """Save a CHM as a regular-grid LAS point cloud (max Z0 per cell)."""
+        x, y, z0 = assigned_cloud[:, 0], assigned_cloud[:, 1], assigned_cloud[:, 3]
+        x_min, y_min = float(x.min()), float(y.min())
+        cols = int(np.ceil((float(x.max()) - x_min) / resolution))
+        rows = int(np.ceil((float(y.max()) - y_min) / resolution))
+
+        grid = np.full((rows, cols), -np.inf, dtype=np.float32)
+
+        # Process in chunks to avoid allocating huge temporary arrays.
+        chunk = 1_000_000
+        n = len(x)
+        for i in range(0, n, chunk):
+            s = slice(i, min(i + chunk, n))
+            ci = np.clip(((x[s] - x_min) / resolution).astype(np.int32), 0, cols - 1)
+            ri = np.clip(((y[s] - y_min) / resolution).astype(np.int32), 0, rows - 1)
+            np.maximum.at(grid, (ri, ci), z0[s].astype(np.float32))
+
+        valid = grid > -np.inf
+        rv, cv = np.where(valid)
+        px = x_min + (cv + 0.5) * resolution
+        py = y_min + (rv + 0.5) * resolution
+        pz = grid[valid].astype(np.float64)
+
+        las = laspy.create(point_format=2, file_version="1.4")
+        las.x, las.y, las.z = px, py, pz
+        las.write(str(self.output_basepath) + f"_heightmap{self._pc_ext}")
+
     def _export_circles(self, circles_coords: np.ndarray):
         # LAS file containing circle coordinates.
         las_circ = laspy.create(point_format=2, file_version="1.4")

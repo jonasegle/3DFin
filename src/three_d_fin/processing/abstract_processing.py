@@ -225,6 +225,17 @@ class FinProcessing(ABC):
         pass
 
     @abstractmethod
+    def _export_heightmap(self, assigned_cloud: np.ndarray):
+        """Export a CHM heightmap as a regular-grid point cloud.
+
+        Parameters
+        ----------
+        assigned_cloud : np.ndarray
+            The enriched point cloud with columns [X, Y, Z, Z0, tree_ID, dist_axes].
+        """
+        pass
+
+    @abstractmethod
     def _export_circles(self, circles_coords: np.ndarray):
         """Export the circles.
 
@@ -644,6 +655,9 @@ class FinProcessing(ABC):
 
                 # Export tree heights
                 self._export_tree_height(tree_heights)
+
+                # Export CHM heightmap
+                self._export_heightmap(assigned_cloud)
 
                 # Enrich and write the full cloud.  In "async" mode the
                 # (slow) LAZ write runs in a background thread so Step 4
