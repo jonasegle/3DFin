@@ -177,22 +177,27 @@ def export_tabular_data(
 
         # 2. Tree Analysis
         if tree_analysis is not None:
+            ta_data = {
+                "DBH": tree_analysis["dbh"],
+                "Normal_Section_Area": tree_analysis["normal_section_area"],
+                "Tree_Height": tree_analysis["tree_height"],
+                "Crown_Height": tree_analysis["crown_height"],
+                "Stem_Volume": tree_analysis["stem_volume"],
+                "X": tree_locations[:, 0],
+                "Y": tree_locations[:, 1],
+            }
+            if "tree_quality" in tree_analysis:
+                ta_data["Tree_Quality"] = tree_analysis["tree_quality"]
+
             df_tree_analysis = pd.DataFrame(
-                data={
-                    "DBH": tree_analysis["dbh"],
-                    "Normal_Section_Area": tree_analysis["normal_section_area"],
-                    "Tree_Height": tree_analysis["tree_height"],
-                    "Crown_Height": tree_analysis["crown_height"],
-                    "Stem_Volume": tree_analysis["stem_volume"],
-                    "X": tree_locations[:, 0],
-                    "Y": tree_locations[:, 1],
-                },
+                data=ta_data,
                 index=["T" + str(i + 1) for i in range(len(tree_analysis["dbh"]))],
             )
 
             info_tree_analysis = pd.Series(
                 "Per-tree analysis: DBH (m), Normal Section Area (m^2), "
-                "Tree Height (m), Crown Height (m), Stem Volume (m^3), Location (X, Y)."
+                "Tree Height (m), Crown Height (m), Stem Volume (m^3), "
+                "Tree Quality (0-1), Location (X, Y)."
             )
             info_tree_analysis.to_excel(
                 writer, sheet_name="Tree Analysis", header=False, index=False, merge_cells=False,
@@ -262,18 +267,22 @@ def export_tabular_data(
 
         # Analysis TXT exports
         if tree_analysis is not None:
-            tree_analysis_array = np.column_stack([
+            ta_cols = [
                 tree_analysis["dbh"],
                 tree_analysis["normal_section_area"],
                 tree_analysis["tree_height"],
                 tree_analysis["crown_height"],
                 tree_analysis["stem_volume"],
-            ])
+            ]
+            ta_header = "DBH\tNormal_Section_Area\tTree_Height\tCrown_Height\tStem_Volume"
+            if "tree_quality" in tree_analysis:
+                ta_cols.append(tree_analysis["tree_quality"])
+                ta_header += "\tTree_Quality"
             np.savetxt(
                 str(basepath_output) + "_tree_analysis.txt",
-                tree_analysis_array,
+                np.column_stack(ta_cols),
                 fmt="%.3f",
-                header="DBH\tNormal_Section_Area\tTree_Height\tCrown_Height\tStem_Volume",
+                header=ta_header,
                 delimiter="\t",
             )
 

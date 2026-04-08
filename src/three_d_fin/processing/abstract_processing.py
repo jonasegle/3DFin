@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 
 import dendromatics as dm
-from three_d_fin.processing.analysis import compute_plot_analysis, compute_tree_analysis
+from three_d_fin.processing.analysis import compute_plot_analysis, compute_quality_mask, compute_tree_analysis
 from three_d_fin.processing.configuration import FinConfiguration
 from three_d_fin.processing.io import export_tabular_data
 from three_d_fin.processing.progress import Progress
@@ -249,7 +249,7 @@ class FinProcessing(ABC):
         pass
 
     @abstractmethod
-    def _export_axes(self, axes_points: np.ndarray, tilt: np.ndarray):
+    def _export_axes(self, axes_points: np.ndarray, tilt: np.ndarray, tree_quality_per_point: np.ndarray | None = None):
         """Export the axes.
 
         Parameters
@@ -779,6 +779,17 @@ class FinProcessing(ABC):
             outliers = dm.tilt_detection(X_c, Y_c, R, sections, w_1=3, w_2=1)
             np.seterr(divide="warn", invalid="warn")
 
+        with self._timed("Step 5d: Compute per-tree quality", timings):
+            _quality_mask = compute_quality_mask(
+                R, outliers, sector_perct, n_points_in,
+                min_radius=config.expert.minimum_diameter / 2.0,
+                max_radius=config.advanced.maximum_diameter / 2.0,
+                min_sector_perct=config.expert.m_number_sectors / config.expert.number_sectors * 100,
+                point_threshold=config.expert.point_threshold,
+            )
+            tree_quality = dm.compute_tree_quality(R, _quality_mask, outliers, sector_perct, sections)
+            del _quality_mask
+
         print("  ")
         print("---------------------------------------------")
         print("6.-Drawing circles and axes...")
@@ -803,21 +814,23 @@ class FinProcessing(ABC):
                     config.expert.number_sectors,
                     config.expert.m_number_sectors,
                     config.expert.circa,
+                    tree_quality=tree_quality,
                 )
 
                 self._export_circles(circles_coords)
 
             with self._timed("Step 6b: Generate and export axes", timings):
-                axes, tilt = dm.generate_axis_cloud(
+                axes, tilt, tree_quality_per_point = dm.generate_axis_cloud(
                     tree_vector,
                     config.expert.axis_downstep,
                     config.expert.axis_upstep,
                     config.basic.lower_limit,
                     config.basic.upper_limit,
                     config.expert.p_interval,
+                    tree_quality=tree_quality,
                 )
 
-                self._export_axes(axes, tilt)
+                self._export_axes(axes, tilt, tree_quality_per_point)
 
         with self._timed("Step 6c: Tree locator and export", timings):
             dbh_values, tree_locations = dm.tree_locator(

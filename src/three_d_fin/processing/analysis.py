@@ -1,3 +1,4 @@
+import dendromatics as dm
 import numpy as np
 
 
@@ -307,6 +308,7 @@ def compute_tree_analysis(
         "stem_volume": compute_stem_volume(R, sections, quality_mask, th, top_shape),
         "dbh": dbh_corrected[:, 0].copy(),
         "tree_height": th[:, 3].copy(),
+        "tree_quality": dm.compute_tree_quality(R, quality_mask, outliers, sector_perct, sections),
     }
 
 

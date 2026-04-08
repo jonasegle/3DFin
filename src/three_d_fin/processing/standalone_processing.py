@@ -162,18 +162,19 @@ class StandaloneLASProcessing(FinProcessing):
         las_circ = laspy.create(point_format=2, file_version="1.4")
         las_circ.xyz = circles_coords[:, 0:3]
 
-        las_circ.add_extra_dims(
-            [
-                laspy.ExtraBytesParams(name="tree_ID", type=np.int32),
-                laspy.ExtraBytesParams(name="sector_occupancy_percent", type=np.float64),
-                laspy.ExtraBytesParams(name="pts_inner_circle", type=np.int32),
-                laspy.ExtraBytesParams(name="Z0", type=np.float64),
-                laspy.ExtraBytesParams(name="Diameter", type=np.float64),
-                laspy.ExtraBytesParams(name="outlier_prob", type=np.float64),
-                laspy.ExtraBytesParams(name="quality", type=np.int32),
-                laspy.ExtraBytesParams(name="pass_method", type=np.int32),
-            ]
-        )
+        dims = [
+            laspy.ExtraBytesParams(name="tree_ID", type=np.int32),
+            laspy.ExtraBytesParams(name="sector_occupancy_percent", type=np.float64),
+            laspy.ExtraBytesParams(name="pts_inner_circle", type=np.int32),
+            laspy.ExtraBytesParams(name="Z0", type=np.float64),
+            laspy.ExtraBytesParams(name="Diameter", type=np.float64),
+            laspy.ExtraBytesParams(name="outlier_prob", type=np.float64),
+            laspy.ExtraBytesParams(name="quality", type=np.int32),
+            laspy.ExtraBytesParams(name="pass_method", type=np.int32),
+        ]
+        if circles_coords.shape[1] >= 13:
+            dims.append(laspy.ExtraBytesParams(name="tree_quality", type=np.float64))
+        las_circ.add_extra_dims(dims)
 
         las_circ.tree_ID = circles_coords[:, 4]
         las_circ.sector_occupancy_percent = circles_coords[:, 5]
@@ -183,14 +184,21 @@ class StandaloneLASProcessing(FinProcessing):
         las_circ.outlier_prob = circles_coords[:, 9]
         las_circ.quality = circles_coords[:, 10]
         las_circ.pass_method = circles_coords[:, 11]
+        if circles_coords.shape[1] >= 13:
+            las_circ.tree_quality = circles_coords[:, 12]
 
         las_circ.write(str(self.output_basepath) + f"_circ{self._pc_ext}")
 
-    def _export_axes(self, axes_points: np.ndarray, tilt: np.ndarray):
+    def _export_axes(self, axes_points: np.ndarray, tilt: np.ndarray, tree_quality_per_point: np.ndarray | None = None):
         las_axes = laspy.create(point_format=2, file_version="1.4")
         las_axes.xyz = axes_points[:, 0:3]
-        las_axes.add_extra_dim(laspy.ExtraBytesParams(name="tilting_degree", type=np.float64))
+        dims = [laspy.ExtraBytesParams(name="tilting_degree", type=np.float64)]
+        if tree_quality_per_point is not None:
+            dims.append(laspy.ExtraBytesParams(name="tree_quality", type=np.float64))
+        las_axes.add_extra_dims(dims)
         las_axes.tilting_degree = tilt
+        if tree_quality_per_point is not None:
+            las_axes.tree_quality = tree_quality_per_point
 
         las_axes.write(str(self.output_basepath) + f"_axes{self._pc_ext}")
 
